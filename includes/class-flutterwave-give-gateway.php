@@ -343,7 +343,7 @@ class Give_Flutterwave_Gateway extends PaymentGateway implements WebhookNotifica
 	 * Helpers: Flutterwave API calls
 	 * --------------------------------------------------------------- */
 
-	private function createFlutterwaveTransaction(Donation $donation)
+	protected function createFlutterwaveTransaction(Donation $donation)
 	{
 		$secret = trim((string) give_get_option('give_flutterwave_secret_key'));
 		if (!$secret) {
@@ -415,7 +415,7 @@ class Give_Flutterwave_Gateway extends PaymentGateway implements WebhookNotifica
 		return new WP_Error('flutterwave_init_failed', 'Failed to initialize Flutterwave transaction: ' . wp_json_encode($json));
 	}
 
-	private function verifyFlutterwave(string $reference)
+	protected function verifyFlutterwave(string $reference)
 	{
 		Log::info(' Flutterwave Verifying Transaction', ['reference' => $reference]);
 		$secret = trim((string) give_get_option('give_flutterwave_secret_key'));

@@ -1,3 +1,5 @@
 *.zip
 *.log
 *.env
+/vendor/
+.phpunit.result.cache
