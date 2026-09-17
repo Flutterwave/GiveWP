@@ -23,36 +23,29 @@ Features:
 
 == Requirements ==
 * PHP 7.4 or greater
-* GiveWP plugin (compatible version noted in plugin data)
+* GiveWP 4.5.0 or greater
 * WordPress 6.0+
 
 == Installation ==
-1. Upload the plugin folder to wp-content/plugins/ or install via zip.
+1. Install via the release zip (built with `wp dist-archive .`). Do not deploy a git clone: it includes development files.
 2. Activate the plugin through the 'Plugins' screen in WordPress.
 3. Go to Donations → Settings → Payment Gateways and enable "Flutterwave".
 4. Configure your API credentials and environment on the settings page.
-5. (Optional) Configure webhook endpoint in the Flutterwave dashboard (see Webhooks section).
+5. Configure the webhook URL and secret hash in the Flutterwave dashboard (see Webhooks section).
 
 == Configuration ==
 Settings available in GiveWP → Settings → Payment Gateways → Flutterwave:
-* Public Key and Secret Key
-* Environment: test | production
-* Webhook secret (used to validate incoming webhooks)
-* Test mode toggle
+* Live Secret Key (FLWSECK-...) and Test Secret Key (FLWSECK_TEST-...)
+* Webhook secret hash (required, at least 16 characters; used to validate incoming webhooks)
+The test or live key is chosen by GiveWP test mode. A key that does not match the mode is refused.
 
 
 == Webhooks ==
-Recommended webhook endpoint: /wp-json/flutterwave/v1/webhook
-Register the endpoint URL in the Flutterwave dashboard for the desired events.
-
-Supported webhook events (examples):
-* charge.completed — mark donation as completed
-* charge.failed    — mark donation as failed
+The webhook URL is shown under the Webhook Secret Hash setting. Register it in the Flutterwave dashboard and set the same secret hash in both places.
 
 Security:
-* Validate webhook signatures using the webhook secret configured in settings.
-* Ensure the webhook endpoint accepts only POST and checks content type.
-* Respond quickly (HTTP 200) and process heavier tasks asynchronously.
+* Webhooks are rejected unless the secret hash is configured and matches the verif-hash header sent by Flutterwave (v3).
+* The webhook body is never trusted: every notification is re-verified with the Flutterwave API, and a donation is completed only when the reference, amount and currency match.
 
 == External Services ==
 This plugin integrates with:

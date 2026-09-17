@@ -4,6 +4,10 @@ declare(strict_types=1);
 
 namespace {
 
+if (PHP_SAPI !== 'cli') {
+    exit;
+}
+
 // Minimal WordPress function & class stubs for running PHPUnit without WP.
 
 if (!defined('GIVE_FLUTTERWAVE_URL')) {
@@ -83,17 +87,92 @@ if (!function_exists('wp_localize_script')) {
     }
 }
 
+if (!function_exists('wp_parse_url')) {
+    function wp_parse_url(string $url, int $component = -1)
+    {
+        return parse_url($url, $component);
+    }
+}
+
+if (!function_exists('give_update_option')) {
+    function give_update_option(string $key, $value)
+    {
+        $GLOBALS['give_test_options'][$key] = $value;
+        return true;
+    }
+}
+
+if (!function_exists('give_delete_option')) {
+    function give_delete_option(string $key)
+    {
+        unset($GLOBALS['give_test_options'][$key]);
+        return true;
+    }
+}
+
+/**
+ * Minimal $wpdb that understands the lock queries used by the gateway.
+ */
+class Give_Test_WPDB
+{
+    public $options = 'wp_options';
+
+    public function prepare(string $query, ...$args): array
+    {
+        return [$query, $args];
+    }
+
+    public function query($prepared)
+    {
+        [$query, $args] = $prepared;
+        $locks = &$GLOBALS['give_test_locks'];
+        $locks = $locks ?? [];
+
+        if (strpos($query, 'INSERT IGNORE') === 0) {
+            if (isset($locks[$args[0]])) {
+                return 0;
+            }
+            $locks[$args[0]] = (int) $args[1];
+            return 1;
+        }
+
+        if (strpos($query, 'DELETE') === 0) {
+            if (!isset($locks[$args[0]])) {
+                return 0;
+            }
+            if (isset($args[1]) && $locks[$args[0]] >= $args[1]) {
+                return 0;
+            }
+            unset($locks[$args[0]]);
+            return 1;
+        }
+
+        throw new \LogicException('Unexpected query: ' . $query);
+    }
+}
+
+$GLOBALS['wpdb'] = new Give_Test_WPDB();
+
+if (!function_exists('wp_unslash')) {
+    function wp_unslash($value)
+    {
+        return $value;
+    }
+}
+
 if (!function_exists('wp_remote_post')) {
     function wp_remote_post(string $url, array $args = [])
     {
-        return ['response' => ['code' => 200], 'body' => '{}'];
+        $GLOBALS['give_test_remote_post_args'][] = ['url' => $url, 'args' => $args];
+        return $GLOBALS['give_test_remote_post'] ?? ['response' => ['code' => 200], 'body' => '{}'];
     }
 }
 
 if (!function_exists('wp_remote_get')) {
     function wp_remote_get(string $url, array $args = [])
     {
-        return ['response' => ['code' => 200], 'body' => '{}'];
+        $GLOBALS['give_test_remote_get_urls'][] = $url;
+        return $GLOBALS['give_test_remote_get'] ?? ['response' => ['code' => 200], 'body' => '{}'];
     }
 }
 
@@ -114,7 +193,7 @@ if (!function_exists('wp_remote_retrieve_body')) {
 if (!function_exists('give_get_option')) {
     function give_get_option(string $key, $default = null)
     {
-        return $default;
+        return $GLOBALS['give_test_options'][$key] ?? $default;
     }
 }
 
@@ -142,7 +221,7 @@ if (!function_exists('give_get_success_page_uri')) {
 if (!function_exists('give_is_donation_completed')) {
     function give_is_donation_completed($donationId): bool
     {
-        return false;
+        return in_array($donationId, $GLOBALS['give_test_completed'] ?? [], true);
     }
 }
 
@@ -156,14 +235,14 @@ if (!function_exists('give_update_payment_status')) {
 if (!function_exists('give_get_payment_meta')) {
     function give_get_payment_meta($donationId, string $key, $single = false)
     {
-        return null;
+        return $GLOBALS['give_test_meta'][$donationId][$key] ?? null;
     }
 }
 
 if (!function_exists('give_update_payment_meta')) {
     function give_update_payment_meta($donationId, string $key, $value): void
     {
-        // no-op
+        $GLOBALS['give_test_meta'][$donationId][$key] = $value;
     }
 }
 
@@ -197,19 +276,55 @@ namespace Give\Donations\ValueObjects {
 
 class DonationStatus
 {
-    public static function FAILED(): string
+    const PENDING = 'pending';
+    const PROCESSING = 'processing';
+    const COMPLETE = 'publish';
+    const REFUNDED = 'refunded';
+    const FAILED = 'failed';
+    const CANCELLED = 'cancelled';
+    const ABANDONED = 'abandoned';
+    const REVOKED = 'revoked';
+
+    private $value;
+
+    private function __construct(string $value)
     {
-        return 'failed';
+        $this->value = $value;
     }
 
-    public static function COMPLETE(): string
+    public static function __callStatic($name, $arguments)
     {
-        return 'complete';
+        return new static(constant(static::class . '::' . $name));
     }
 
-    public static function CANCELLED(): string
+    public function __call($name, $arguments)
     {
-        return 'cancelled';
+        if (strpos($name, 'is') === 0) {
+            $constant = strtoupper(substr($name, 2));
+            return $this->value === constant(static::class . '::' . $constant);
+        }
+
+        throw new \BadMethodCallException("Method $name does not exist on enum");
+    }
+
+    public function getValue(): string
+    {
+        return $this->value;
+    }
+}
+
+class DonationMode
+{
+    private $test;
+
+    public function __construct(bool $test)
+    {
+        $this->test = $test;
+    }
+
+    public function isTest(): bool
+    {
+        return $this->test;
     }
 }
 
@@ -217,6 +332,7 @@ class DonationStatus
 
 namespace Give\Donations\Models {
 
+use Give\Donations\ValueObjects\DonationMode;
 use Give\Donations\ValueObjects\DonationStatus;
 
 class Donation
@@ -225,22 +341,39 @@ class Donation
     public $amount;
     public $donor;
     public $status;
+    public $mode;
     public $gatewayTransactionId;
 
-    public function __construct()
+    public function __construct(string $decimalAmount = '100.00', string $currency = 'USD', bool $testMode = true)
     {
-        $this->amount = new class {
-            public function getAmount()
+        $this->amount = new class($decimalAmount, $currency) {
+            private $decimalAmount;
+            private $currency;
+
+            public function __construct(string $decimalAmount, string $currency)
             {
-                return 10000;
+                $this->decimalAmount = $decimalAmount;
+                $this->currency = $currency;
+            }
+
+            public function formatToDecimal()
+            {
+                return $this->decimalAmount;
             }
 
             public function getCurrency()
             {
-                return new class {
+                return new class($this->currency) {
+                    private $code;
+
+                    public function __construct(string $code)
+                    {
+                        $this->code = $code;
+                    }
+
                     public function getCode()
                     {
-                        return 'USD';
+                        return $this->code;
                     }
                 };
             }
@@ -248,6 +381,8 @@ class Donation
         $this->donor = new class {
             public $email = 'donor@example.com';
         };
+        $this->status = DonationStatus::PENDING();
+        $this->mode = new DonationMode($testMode);
     }
 
     public function save(): void
@@ -257,7 +392,7 @@ class Donation
 
     public static function find($id)
     {
-        return null;
+        return $GLOBALS['give_test_donations'][$id] ?? null;
     }
 }
 
@@ -285,6 +420,20 @@ class RedirectOffsite
 
 class PaymentComplete {}
 class PaymentRefunded {}
+
+}
+
+namespace Give\Framework\Http\Response\Types {
+
+class RedirectResponse
+{
+    public $url;
+
+    public function __construct(string $url)
+    {
+        $this->url = $url;
+    }
+}
 
 }
 
