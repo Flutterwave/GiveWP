@@ -14,7 +14,7 @@ if (!defined('GIVE_FLUTTERWAVE_URL')) {
     define('GIVE_FLUTTERWAVE_URL', 'https://example.com/');
 }
 if (!defined('GIVE_FLUTTERWAVE_VER')) {
-    define('GIVE_FLUTTERWAVE_VER', '1.0.0');
+    define('GIVE_FLUTTERWAVE_VER', '1.0.1');
 }
 
 if (!function_exists('esc_html__')) {

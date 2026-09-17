@@ -3,7 +3,7 @@
  * Plugin Name: Flutterwave for Give
  * Plugin URI: https://developers.flutterwave.com/
  * Description: Accept donations via Flutterwave (hosted checkout) in GiveWP.
- * Version: 1.0.0
+ * Version: 1.0.1
  * Author: Flutterwave
  * Author URI: https://app.flutterwave.com/
  * Developer: Flutterwave Developers
@@ -32,7 +32,7 @@ if ( !defined( 'GIVE_FLUTTERWAVE_URL' ) ) {
 }
 
 if ( !defined( 'GIVE_FLUTTERWAVE_VER' ) ) {
-	define( 'GIVE_FLUTTERWAVE_VER', '1.0.0' );
+	define( 'GIVE_FLUTTERWAVE_VER', '1.0.1' );
 }
 
 if ( !defined( 'GIVE_FLUTTERWAVE_MIN_GIVE_VERSION' ) ) {
