@@ -3,7 +3,7 @@
  * Plugin Name: Flutterwave for Give
  * Plugin URI: https://developers.flutterwave.com/
  * Description: Accept donations via Flutterwave (hosted checkout) in GiveWP.
- * Version: 1.0.0
+ * Version: 1.0.1
  * Author: Flutterwave
  * Author URI: https://app.flutterwave.com/
  * Developer: Flutterwave Developers
@@ -32,7 +32,11 @@ if ( !defined( 'GIVE_FLUTTERWAVE_URL' ) ) {
 }
 
 if ( !defined( 'GIVE_FLUTTERWAVE_VER' ) ) {
-	define( 'GIVE_FLUTTERWAVE_VER', '1.0.0' );
+	define( 'GIVE_FLUTTERWAVE_VER', '1.0.1' );
+}
+
+if ( !defined( 'GIVE_FLUTTERWAVE_MIN_GIVE_VERSION' ) ) {
+	define( 'GIVE_FLUTTERWAVE_MIN_GIVE_VERSION', '4.5.0' );
 }
 
 /**
@@ -43,7 +47,7 @@ if ( !defined( 'GIVE_FLUTTERWAVE_VER' ) ) {
  * @param array $links
  * @return array
  */
-function register_settings_link( $links ) {
+function give_flutterwave_register_settings_link( $links ) {
 	$url = admin_url( 'edit.php?post_type=give_forms&page=give-settings&tab=gateways&section=flutterwave' );
 	$label = esc_html__( 'Settings', 'flutterwave-give' );
 
@@ -58,7 +62,7 @@ function register_settings_link( $links ) {
  *
  * @since 3.0.2
  */
-function filter_gateway( $gateways, $form_id ) {
+function give_flutterwave_filter_gateway( $gateways, $form_id ) {
 
 	if ( ! isset( $_SERVER['REQUEST_URI'] ) ) {
 		return $gateways;
@@ -67,7 +71,6 @@ function filter_gateway( $gateways, $form_id ) {
 	// Sanitize request URI to satisfy WP coding standards.
 	$request_uri = sanitize_url( wp_unslash( $_SERVER['REQUEST_URI'] ) );
 	$request_uri = wp_check_invalid_utf8( $request_uri );
-//	$request_uri = sanitize_text_field( $request_uri );
 
 	// Skip gateway filtering on create Give form donation page
 	if ( false !== strpos( $request_uri, '/wp-admin/post-new.php?post_type=give_forms' ) ) {
@@ -75,7 +78,7 @@ function filter_gateway( $gateways, $form_id ) {
 	}
 
 	if ( $form_id ) {
-		$is_supported_currency = in_array( give_get_currency( $form_id ), [ 'NGN', 'GHS', 'USD', 'EUR', 'GBP', 'XAF', 'EGP', 'RWF', 'SLL', 'ZAR', 'TZS', 'UGX', 'XOF', 'ZMW'] );
+		$is_supported_currency = in_array( give_get_currency( $form_id ), \GiveFlutterwave\Give_Flutterwave_Gateway::SUPPORTED_CURRENCIES, true );
 		$is_enabled = give_is_setting_enabled( give_get_meta( $form_id, 'flutterwave_customize_flutterwave_donations', true, 'global' ), [ 'enabled', 'global' ] );
 
 		if ( ! $is_supported_currency || ! $is_enabled ) {
@@ -88,29 +91,52 @@ function filter_gateway( $gateways, $form_id ) {
 
 
 /**
+ * Warn admins about unsafe or incomplete Flutterwave configuration.
+ */
+function give_flutterwave_config_notice() {
+	if ( ! current_user_can( 'manage_give_settings' ) || ! give_is_gateway_active( \GiveFlutterwave\Give_Flutterwave_Gateway::id() ) ) {
+		return;
+	}
+
+	$webhook_url = '';
+	try {
+		$webhook_url = \GiveFlutterwave\Give_Flutterwave_Gateway::webhook()->getNotificationUrl();
+	} catch ( \Throwable $e ) {
+		// Skip the HTTPS check if GiveWP cannot build the URL.
+	}
+
+	$problems = \GiveFlutterwave\Give_Flutterwave_Gateway::getConfigurationProblems( give_is_test_mode(), $webhook_url );
+
+	foreach ( $problems as $problem ) {
+		echo '<div class="notice notice-error"><p><strong>Flutterwave for GiveWP:</strong> ' . esc_html( $problem ) . '</p></div>';
+	}
+}
+
+/**
  * Register Flutterwave as a payment method in GiveWP.
  *
  * @since 4.0.0
  */
-function register_gateway( $registrar ) {
+function give_flutterwave_register_gateway( $registrar ) {
 	$registrar->registerGateway( \GiveFlutterwave\Give_Flutterwave_Gateway::class );
 }
 
 add_action('plugins_loaded', function () {
-	if (!class_exists('Give')) {
+	// WebhookNotificationsListener (used by the gateway class) was added in GiveWP 4.5.0.
+	if (!class_exists('Give') || !defined('GIVE_VERSION') || version_compare(GIVE_VERSION, GIVE_FLUTTERWAVE_MIN_GIVE_VERSION, '<')) {
 		add_action('admin_notices', function () {
-			echo '<div class="notice notice-error"><p><strong>Flutterwave for GiveWP</strong> requires GiveWP to be active.</p></div>';
+			echo '<div class="notice notice-error"><p><strong>Flutterwave for GiveWP</strong> requires GiveWP ' . esc_html(GIVE_FLUTTERWAVE_MIN_GIVE_VERSION) . ' or later to be active.</p></div>';
 		});
 		return;
 	}
 
-	add_filter( 'plugin_action_links_' . plugin_basename( __FILE__ ), 'register_settings_link' );
+	add_filter( 'plugin_action_links_' . plugin_basename( __FILE__ ), 'give_flutterwave_register_settings_link' );
 
 	if (!class_exists('GiveFlutterwave\Give_Flutterwave_Gateway')) {
 		require_once GIVE_FLUTTERWAVE_PATH . 'includes/admin/settings.php';
 		require_once GIVE_FLUTTERWAVE_PATH . 'includes/class-flutterwave-give-gateway.php';
 
-		add_action( 'givewp_register_payment_gateway', 'register_gateway' );
+		add_action( 'givewp_register_payment_gateway', 'give_flutterwave_register_gateway' );
 
 		// Register gateway in GiveWP’s list.
 		add_filter('give_payment_gateways', function ($gateways) {
@@ -122,6 +148,10 @@ add_action('plugins_loaded', function () {
 			return $gateways;
 		});
 
-		add_action('give_enabled_payment_gateways', 'filter_gateway', 10, 2);
+		add_filter('give_enabled_payment_gateways', 'give_flutterwave_filter_gateway', 10, 2);
+
+		\GiveFlutterwave\Give_Flutterwave_Gateway::migrateLegacySettings();
+
+		add_action('admin_notices', 'give_flutterwave_config_notice');
 	}
 });
