@@ -4,92 +4,104 @@ Tags: give, payments, flutterwave, donations, charity
 Requires at least: 6.0
 Tested up to: 6.8
 Requires PHP: 7.4
-Stable tag: 1.0.0
+Stable tag: 1.0.1
 License: GPLv3
 License URI: http://www.gnu.org/licenses/gpl-3.0.html
 
-Short Description
-Integrates Flutterwave as a payment gateway for GiveWP to accept donations via Flutterwave.
+Accept GiveWP donations through Flutterwave's hosted checkout.
 
 == Description ==
-The Flutterwave Gateway for GiveWP adds a Flutterwave payment option to GiveWP donation forms so donations can be processed using Flutterwave's hosted checkout and API. Built for both sandbox and live environments with webhook handling and secure API key configuration.
+Flutterwave for GiveWP adds Flutterwave as a payment gateway for GiveWP donation forms. Donors are redirected to Flutterwave's hosted checkout to pay, and every payment is verified with the Flutterwave API before a donation is marked complete.
 
 Features:
-* Support for Flutterwave API (sandbox & production)
-* Webhook handler for asynchronous payment notifications
-* Mapping of Flutterwave payment statuses to GiveWP statuses
-* Configurable API keys and environment via settings
-* Test/sandbox mode and live mode
+* Flutterwave v3 hosted checkout
+* Payment verification on the donor's return and through webhooks
+* A donation is completed only when the Flutterwave reference, amount and currency match it
+* Separate live and test secret keys, selected by GiveWP test mode
+* Supported currencies: NGN, GHS, USD, EUR, GBP, XAF, EGP, RWF, SLL, ZAR, TZS, UGX, XOF, ZMW
 
 == Requirements ==
+* WordPress 6.0 or greater
+* GiveWP 4.5.0 or greater
 * PHP 7.4 or greater
-* GiveWP plugin (compatible version noted in plugin data)
-* WordPress 6.0+
+* A Flutterwave account
+* HTTPS on the site (required to receive webhooks securely)
 
 == Installation ==
-1. Upload the plugin folder to wp-content/plugins/ or install via zip.
-2. Activate the plugin through the 'Plugins' screen in WordPress.
+1. Install the plugin from the release zip (built with `wp dist-archive .`). Do not deploy a git clone: it includes development files.
+2. Activate the plugin through the Plugins screen in WordPress.
 3. Go to Donations → Settings → Payment Gateways and enable "Flutterwave".
-4. Configure your API credentials and environment on the settings page.
-5. (Optional) Configure webhook endpoint in the Flutterwave dashboard (see Webhooks section).
+4. Open the Flutterwave section and enter your Live Secret Key and Test Secret Key.
+5. Set a webhook secret hash, then add the webhook URL and the same secret hash in your Flutterwave dashboard (see Webhooks).
 
 == Configuration ==
-Settings available in GiveWP → Settings → Payment Gateways → Flutterwave:
-* Public Key and Secret Key
-* Environment: test | production
-* Webhook secret (used to validate incoming webhooks)
-* Test mode toggle
+Settings are in Donations → Settings → Payment Gateways → Flutterwave:
 
+* Live Secret Key: starts with FLWSECK-. Used when GiveWP test mode is off.
+* Test Secret Key: starts with FLWSECK_TEST-. Used when GiveWP test mode is on.
+* Webhook Secret Hash: required, at least 16 characters.
+
+A key that does not match the current mode is refused, and an admin notice explains what to fix.
 
 == Webhooks ==
-Recommended webhook endpoint: /wp-json/flutterwave/v1/webhook
-Register the endpoint URL in the Flutterwave dashboard for the desired events.
-
-Supported webhook events (examples):
-* charge.completed — mark donation as completed
-* charge.failed    — mark donation as failed
+The webhook URL is shown under the Webhook Secret Hash setting. In the Flutterwave dashboard, add that URL as your webhook and set the same secret hash in both places.
 
 Security:
-* Validate webhook signatures using the webhook secret configured in settings.
-* Ensure the webhook endpoint accepts only POST and checks content type.
-* Respond quickly (HTTP 200) and process heavier tasks asynchronously.
+* Webhooks are rejected unless the secret hash is configured and matches the verif-hash header sent by Flutterwave.
+* The webhook body is never trusted. Every notification is re-verified with the Flutterwave API, and a donation is completed only when the reference, amount and currency match.
 
 == External Services ==
-This plugin integrates with:
-* Flutterwave API — payment processing and webhooks
-* GiveWP — donation management in WordPress
+This plugin connects to the Flutterwave API (https://api.flutterwave.com) to create checkout sessions and verify payments.
 
-== Contribution Guidelines ==
-Contributions welcome. Please:
-1. Fork the repository.
-2. Create feature branches from main.
-3. Write tests for new features.
-4. Follow PSR-12 for PHP and project linting rules.
-5. Open PRs with clear description and testing notes.
+* When a donor submits a donation, the plugin sends the donation amount, currency, a transaction reference, the donor's email address and a return URL to Flutterwave.
+* When the donor returns or a webhook arrives, the plugin sends the transaction reference to Flutterwave to verify the payment.
 
-== Screenshots ==
-1. screenshot-1.png — Flutterwave gateway settings in GiveWP
-2. screenshot-2.png — Donation checkout with Flutterwave option
-3. screenshot-3.png — Webhook logs / admin view
+The service is provided by Flutterwave. See Flutterwave's terms of service and privacy policy at https://flutterwave.com.
 
 == Frequently Asked Questions ==
-Q: How do I enable test mode?
-A: Select 'test' in plugin settings.
+= How do I enable test mode? =
+Turn on test mode in GiveWP (Donations → Settings → Payment Gateways) and enter your Test Secret Key. The plugin uses the test key while GiveWP test mode is on and the live key otherwise.
 
-Q: Where do I set the webhook secret?
-A: In the Flutterwave gateway settings in GiveWP. Use the same secret in the Flutterwave dashboard webhook configuration.
+= Where do I set the webhook secret? =
+In Donations → Settings → Payment Gateways → Flutterwave. Use the same secret hash in the Flutterwave dashboard webhook settings.
+
+= Why is my donation not marked complete? =
+Check that a webhook secret hash of at least 16 characters is set in both GiveWP and Flutterwave, that the secret key matches GiveWP test mode, and review the gateway logs in GiveWP.
+
+== Screenshots ==
+1. Flutterwave gateway settings in GiveWP
+2. Donation checkout with Flutterwave option
+3. Webhook logs / admin view
 
 == Changelog ==
+= 1.0.1 - 2026-09-17 =
+Security release. All users should update.
+
+* Security: The return URL is now signed, and a donation is completed only when the Flutterwave reference, amount and currency match it. Previously a small payment could complete a larger donation.
+* Security: Webhooks now require a secret hash of at least 16 characters and are re-verified with the Flutterwave API.
+* Security: Invalid return requests can no longer mark other donations as failed.
+* Security: Refunded or completed donations are never overwritten, and a lock prevents the webhook and the donor's return from completing a donation twice.
+* Security: Separate live and test secret keys; a key that does not match GiveWP test mode is refused.
+* Security: Checkout redirects are limited to Flutterwave URLs.
+* Security: Donors see a generic error message, logs no longer store customer details, and keys are masked on the settings screen.
+* Security: Credentials are deleted when the plugin is uninstalled.
+* Fix: Donations in zero-decimal currencies (UGX, RWF, XAF, XOF) were charged 1% of the amount.
+* Fix: The webhook listener was not connected to GiveWP.
+* Fix: Checkout now sends tx_ref as required by the Flutterwave v3 API.
+* Fix: Cancelled checkouts now mark the donation as cancelled.
+* Change: Requires GiveWP 4.5.0 or greater.
+* Change: The old single secret key is moved to the Live or Test key field, and the unused Public Key and Mode settings are removed.
+* Change: The webhook URL has changed; copy it from the settings screen into the Flutterwave dashboard.
+
 = 1.0.0 =
 * Initial release: basic payment processing, webhook handling, settings UI.
 
 == Upgrade Notice ==
-= 1.0.0 =
-Initial public release. Follow upgrade/testing notes in CHANGELOG.md if present.
+= 1.0.1 =
+Security release. After updating, set a webhook secret hash of at least 16 characters, copy the new webhook URL into the Flutterwave dashboard, and check that your secret keys match GiveWP test mode.
 
-== Notes ==
-- Add a LICENSE file at repository root if not present.
-- Replace placeholder contributor usernames and screenshots with real assets before release.
+= 1.0.0 =
+Initial public release.
 
 == Support ==
 For issues and support, open an issue in the source repository and include reproduction steps and environment details.

@@ -58,22 +58,22 @@ Before installing the plugin, ensure the following:
 1. A [**Flutterwave Business Account**](https://app.flutterwave.com/login)
 2. [Your **Flutterwave API Keys**](https://developer.flutterwave.com/v3.0.0/docs/authentication)
 3. [**WordPress**](https://en-gb.wordpress.org/download/)
-4. [**GiveWP Plugin**](https://givewp.com/)
+4. [**GiveWP Plugin**](https://givewp.com/) 4.5.0 or later
 5. Supported **PHP Version**: >= 7.4
 
 ---
 
 # Installation
 
-1. Clone or download this repository into your WordPress `wp-content/plugins` directory.
+1. Install the plugin from a release zip. Do not clone this repository into `wp-content/plugins` on a live site: it contains development files (`tests/`, `compose.yml` with local database credentials, Composer files) that should not be web-accessible. Build a release zip with `wp dist-archive .`, which honours `.distignore`.
 2. Activate the **Flutterwave GiveWP** plugin from the WordPress admin > Plugins screen.
 3. Install and activate the [GiveWP](https://givewp.com/) plugin if you haven’t already.
 
 # Configuration
 
 1. Go to **Donations > Settings > Payment Gateways** in WordPress.
-2. Enable **Flutterwave** and enter your Flutterwave **Public key** and **Secret key**.
-3. Configure any additional settings (modes, webhook secret, etc.) as needed.
+2. Enable **Flutterwave** and enter your Flutterwave **Live Secret Key** and **Test Secret Key**. GiveWP test mode decides which one is used; a key that does not match the mode is refused.
+3. Copy the webhook URL shown under **Webhook Secret Hash** into the Flutterwave dashboard, and set the same secret hash in both places. Webhooks are rejected without it.
 
 # Running Tests
 

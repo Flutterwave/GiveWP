@@ -2,6 +2,10 @@
 
 declare(strict_types=1);
 
+if (PHP_SAPI !== 'cli') {
+    exit;
+}
+
 // Ensure ABSPATH is defined so plugin code doesn't bail out.
 if (!defined('ABSPATH')) {
     define('ABSPATH', __DIR__ . '/../');
